@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IBOT Pipeline — Agent Interaction Map</title>
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b22; --panel2:#1c232d; --line:#2a323d;
+    --tx:#e6edf3; --tx2:#9aa7b4; --tx3:#6e7d8d;
+    --s1:#7c6cf0; --s2:#1fa8a0; --s3:#3b82f6; --s4:#e0952a;
+    --qg:#e0556a; --s5:#31a45b; --aux:#6e7d8d;
+  }
+  @media (prefers-color-scheme: light){
+    :root{ --bg:#f4f6f9; --panel:#ffffff; --panel2:#eef1f5; --line:#d9e0e8;
+           --tx:#16202b; --tx2:#4d5b6a; --tx3:#7a8794; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--tx);
+       font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:1240px;margin:0 auto;padding:28px 22px 60px}
+
+  header h1{font-size:24px;margin:0 0 4px;letter-spacing:-.2px}
+  header p{margin:0;color:var(--tx2);font-size:14px}
+  .hint{margin-top:14px;font-size:12.5px;color:var(--tx3);
+        border:1px dashed var(--line);border-radius:8px;padding:8px 12px;display:inline-block}
+
+  /* ---------- top nav rail ---------- */
+  .rail{display:flex;flex-wrap:wrap;gap:8px;margin:22px 0 26px}
+  .pill{cursor:pointer;border:1px solid var(--line);background:var(--panel);
+        border-radius:999px;padding:6px 14px;font-size:13px;font-weight:600;
+        color:var(--tx2);transition:.15s}
+  .pill span{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;
+             vertical-align:1px;background:var(--c)}
+  .pill:hover{color:var(--tx);border-color:var(--c)}
+  .pill.on{color:var(--tx);border-color:var(--c);box-shadow:inset 0 0 0 1px var(--c)}
+
+  /* ---------- layout ---------- */
+  .grid{display:grid;grid-template-columns:1fr 380px;gap:26px;align-items:start}
+  @media (max-width:960px){ .grid{grid-template-columns:1fr} .detail{position:static!important} }
+
+  /* ---------- flow nodes ---------- */
+  .node{position:relative;border:1px solid var(--line);border-left:4px solid var(--c);
+        background:var(--panel);border-radius:10px;padding:14px 16px;cursor:pointer;
+        transition:.15s}
+  .node:hover{transform:translateX(2px);border-color:var(--c)}
+  .node.on{box-shadow:0 0 0 2px var(--c) inset, 0 6px 20px rgba(0,0,0,.18)}
+  .node .tag{display:inline-block;background:var(--c);color:#fff;font-size:11px;font-weight:700;
+             letter-spacing:.5px;padding:2px 8px;border-radius:5px;margin-right:9px}
+  .node h3{display:inline;font-size:16px;margin:0;font-weight:650}
+  .node .cells{float:right;font-size:11.5px;color:var(--tx3);font-family:ui-monospace,Menlo,monospace;
+               border:1px solid var(--line);border-radius:5px;padding:2px 7px}
+  .node p{margin:9px 0 0;font-size:13.5px;color:var(--tx2)}
+
+  /* ---------- connectors ---------- */
+  .conn{display:flex;align-items:center;gap:12px;margin:0 0 0 26px;padding:10px 0}
+  .conn .stem{width:2px;background:var(--line);align-self:stretch;min-height:34px;border-radius:2px}
+  .conn .lbl{background:var(--panel2);border:1px solid var(--line);border-radius:7px;
+             padding:6px 11px;font-size:12px;color:var(--tx2)}
+  .conn .lbl b{color:var(--tx);font-weight:650;font-size:12.5px}
+  .conn .lbl em{font-style:normal;color:var(--tx3);font-family:ui-monospace,Menlo,monospace;font-size:11px}
+  .arrow{color:var(--tx3);font-size:15px;margin-left:-6px}
+
+  /* ---------- side attachments ---------- */
+  .aux{display:flex;align-items:center;gap:10px;margin:8px 0 8px 26px}
+  .aux .dash{width:38px;height:0;border-top:2px dashed var(--line)}
+  .auxbox{border:1px dashed var(--line);border-radius:8px;background:transparent;
+          padding:7px 12px;font-size:12px;color:var(--tx2)}
+  .auxbox b{color:var(--tx);font-weight:650}
+
+  /* ---------- verdict branch ---------- */
+  .branch{margin:12px 0 0 26px;border-left:2px solid var(--line);padding:4px 0 4px 20px;
+          display:grid;gap:8px}
+  .v{border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-size:12.5px;
+     background:var(--panel);border-left:3px solid var(--vc)}
+  .v b{color:var(--vc)}
+  .v span{color:var(--tx2)}
+
+  /* ---------- caveat trail ---------- */
+  .trail{margin:26px 0 0;border:1px solid var(--line);border-radius:10px;background:var(--panel);
+         padding:14px 16px}
+  .trail h4{margin:0 0 8px;font-size:13px;letter-spacing:.4px;text-transform:uppercase;color:var(--tx3)}
+  .trail .chain{display:flex;flex-wrap:wrap;gap:6px;align-items:center;
+                font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:var(--tx2)}
+  .trail .chain code{background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:2px 7px}
+
+  /* ---------- detail panel ---------- */
+  .detail{position:sticky;top:22px;border:1px solid var(--line);border-radius:12px;
+          background:var(--panel);padding:18px 18px 20px;min-height:420px}
+  .detail .dtag{display:inline-block;background:var(--c);color:#fff;font-size:11px;font-weight:700;
+                padding:2px 8px;border-radius:5px;letter-spacing:.5px}
+  .detail h2{font-size:18px;margin:10px 0 2px;letter-spacing:-.2px}
+  .detail .sub{font-size:12.5px;color:var(--tx3);margin:0 0 14px}
+  .detail h5{margin:16px 0 6px;font-size:11px;letter-spacing:.7px;text-transform:uppercase;
+             color:var(--tx3);border-top:1px solid var(--line);padding-top:12px}
+  .detail h5:first-of-type{border-top:0;padding-top:0}
+  .detail ul{margin:0;padding-left:17px}
+  .detail li{font-size:13px;color:var(--tx2);margin:3px 0}
+  .detail li b{color:var(--tx);font-weight:600}
+  .kv{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:var(--tx2)}
+  footer{margin-top:34px;font-size:11.5px;color:var(--tx3);border-top:1px solid var(--line);padding-top:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>IBOT Pipeline — Agent Interaction Map</h1>
+  <p>Six agents, one notebook. Each hands the next a structured Handoff Package; QG2 is the gate before real capital.</p>
+  <div class="hint">Click any agent, handoff, or verdict for details →</div>
+</header>
+
+<div class="rail" id="rail"></div>
+
+<div class="grid">
+  <!-- ================= FLOW COLUMN ================= -->
+  <div id="flow">
+
+    <!-- S1 -->
+    <div class="node" data-id="s1" style="--c:var(--s1)">
+      <span class="cells">document</span>
+      <span class="tag">S1</span><h3>Idea Generation</h3>
+      <p>Turns a raw idea (transcript, paper, notes) into an unambiguous, backtest-ready hypothesis. Sections 1–8 + self-audit for look-ahead bias.</p>
+    </div>
+
+    <div class="conn">
+      <div class="stem"></div>
+      <div class="lbl"><b>S1 → S2 Handoff Package</b><br>
+        <em>A–G · secType routing · §F validation checklist · §G5 variants</em></div>
+      <span class="arrow">▼</span>
+    </div>
+
+    <!-- S2 -->
+    <div class="node" data-id="s2" style="--c:var(--s2)">
+      <span class="cells">Cells 1–5</span>
+      <span class="tag">S2</span><h3>Data Extraction</h3>
+      <p>Routes on <code>secType</code>, downloads history, computes indicators, verifies zero NaN, previews signals. Builds <code>df</code> in a VS Code notebook.</p>
+    </div>
+
+    <div class="aux">
+      <div class="dash"></div>
+      <div class="auxbox" data-id="src"><b>Data sources</b> — IBKR TWS (STK/FUT/CASH) · R2 Options Lake (OPT)</div>
+    </div>
+
+    <div class="conn">
+      <div class="stem"></div>
+      <div class="lbl"><b>S2 → S3 Handoff Package</b><br>
+        <em>§A data · §B strategy logic (verbatim) · §C QG1 caveats</em></div>
+      <span class="arrow">▼</span>
+    </div>
+
+    <!-- S3 -->
+    <div class="node" data-id="s3" style="--c:var(--s3)">
+      <span class="cells">Cells 5–9</span>
+      <span class="tag">S3</span><h3>R.E.A.L. Backtest</h3>
+      <p>70/30 IS-OOS split, next-bar-open fills, IBKR costs + slippage, look-ahead verified. Produces the trade log and baseline metrics.</p>
+    </div>
+
+    <div class="conn">
+      <div class="stem"></div>
+      <div class="lbl"><b>S3 → S4 Handoff Package</b><br>
+        <em>§A metrics · §B R.E.A.L. proof · §C logic · §D caveats · §E memory vars</em></div>
+      <span class="arrow">▼</span>
+    </div>
+
+    <!-- S4 -->
+    <div class="node" data-id="s4" style="--c:var(--s4)">
+      <span class="cells">Cells 10–15</span>
+      <span class="tag">S4</span><h3>Grid Search Optimization</h3>
+      <p>Sweeps parameters on <b>in-sample only</b>, picks the centre of a plateau (not the peak), tests QG1 variants, then unlocks OOS once at Cell 14.</p>
+    </div>
+
+    <div class="aux">
+      <div class="dash"></div>
+      <div class="auxbox" data-id="modal"><b>Modal.com</b> — offered &gt;200 combos, required &gt;2,000; up to 100k</div>
+    </div>
+
+    <div class="conn">
+      <div class="stem"></div>
+      <div class="lbl"><b>S4 → QG2 Handoff Package</b><br>
+        <em>§A–G · before/after metrics · plateau evidence · FINAL_PARAMS</em></div>
+      <span class="arrow">▼</span>
+    </div>
+
+    <!-- QG2 -->
+    <div class="node" data-id="qg2" style="--c:var(--qg)">
+      <span class="cells">Cells 16–19</span>
+      <span class="tag">QG2</span><h3>Walk-Forward Stress Test</h3>
+      <p>Adversarial gate. Three tests — walk-forward folds, Monte Carlo shuffle, random-entry baseline — then one of three verdicts.</p>
+    </div>
+
+    <div class="branch">
+      <div class="v" data-id="pass"  style="--vc:var(--s5)"><b>✅ PASS</b> <span>— 3/3 tests pass, ≥2 strong → S5 at full size</span></div>
+      <div class="v" data-id="cond"  style="--vc:var(--s4)"><b>🟡 CONDITIONAL PASS</b> <span>— ≥2/3 pass → S5, dry-run default + 50% size</span></div>
+      <div class="v" data-id="fail"  style="--vc:var(--qg)"><b>🔴 FAIL</b> <span>— no handoff. Loop back to S4 (ranges) or S1 (simplify)</span></div>
+    </div>
+
+    <div class="aux" style="margin-top:14px">
+      <div class="dash"></div>
+      <div class="auxbox" data-id="port"><b>Portfolio export</b> — <span class="kv">portfolio_data/{STRATEGY}_returns.csv</span>, written on every verdict</div>
+    </div>
+
+    <div class="conn">
+      <div class="stem"></div>
+      <div class="lbl"><b>QG2 → S5 Handoff Package</b><br>
+        <em>§A verdict · §B stress results · §C risk limits · §D logic · §F caveats</em></div>
+      <span class="arrow">▼</span>
+    </div>
+
+    <!-- S5 -->
+    <div class="node" data-id="s5" style="--c:var(--s5)">
+      <span class="cells">.py script</span>
+      <span class="tag">S5</span><h3>Deployment Wizard</h3>
+      <p>Auto-parses the QG2 handoff (or interviews in 4 phases) and generates a production IBKR script with kill switch, circuit breaker and Streamlit logging.</p>
+    </div>
+
+    <div class="aux">
+      <div class="dash"></div>
+      <div class="auxbox" data-id="life"><b>Lifecycle</b> — 3xxx dry-run → 2xxx paper → 1xxx live</div>
+    </div>
+
+    <div class="trail">
+      <h4>QG1 caveat trail — the thread that survives every handoff</h4>
+      <div class="chain">
+        <code>S1 §8D variants</code> →
+        <code>S1 handoff §G5</code> →
+        <code>S2 §C5</code> →
+        <code>S3 §D</code> →
+        <code>S4 Cell 13</code> →
+        <code>S4 §F</code> →
+        <code>QG2 §F</code> →
+        <code>S5 sizing haircut</code>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ================= DETAIL PANEL ================= -->
+  <aside class="detail" id="detail" style="--c:var(--s1)"></aside>
+</div>
+
+<footer>Generated from the installed IBOT skill definitions (ibot-s1…s5, ibot-qg2-stress-test, ibot-r2-options-data). Section letters, cell ranges and thresholds mirror those SKILL.md files.</footer>
+</div>
+
+<script>
+const D = {
+  s1:{c:'--s1',tag:'S1',name:'Idea Generation',sub:'Senior quant researcher · document output, no notebook yet',
+    In:['Raw idea: YouTube transcript, paper, notes, or plain English','Nothing upstream — this is the pipeline entry point'],
+    Does:['Detects multiple distinct strategies and splits them','Writes Sections 1–7: assets, entry/exit, risk, sizing, data range','Section 8 self-audit: look-ahead bias, execution realism, missing info','Applies tiered defaults (SPY, 1 hour, RSI 14, SL 7%, TP 10%)','Generates 1–5 economically defensible variants (§8D)'],
+    Out:['S1 → S2 Handoff Package, Sections A–G','§B carries <b>secType</b> — this is what routes S2\'s data source','§F is S2\'s validation checklist','§G5 variants seed S4 Cell 13'],
+    Rules:['Every condition must be codeable as an if-statement','Tier 3 vagueness blocks with 🚨 rather than guessing','One handoff package per strategy when the source has several']},
+
+  s2:{c:'--s2',tag:'S2',name:'Data Extraction',sub:'Interactive Python tutor · notebook Cells 1–5',
+    In:['S1 → S2 Handoff Package','secType from §B decides the data source'],
+    Does:['Routes: STK/ETF/FUT/CASH → IBKR TWS; OPT → R2 Options Lake','Downloads and caches history (parquet for R2, CSV for IBKR)','Computes indicators from §C in pure pandas/numpy — no TA libs','Quality report: zero NaN, signal-count preview, visual inspection'],
+    Out:['S2 → S3 Handoff Package','§A data profile: rows, coverage, columns, filters, cache path','§B strategy logic forwarded <b>unchanged</b>','§C QG1 caveats incl. C5 variants'],
+    Rules:['Never simulate option prices if R2 has the symbol','3+ years minimum, warn if shorter','One cell at a time — wait for output before the next']},
+
+  s3:{c:'--s3',tag:'S3',name:'R.E.A.L. Backtest',sub:'Backtest specialist · same notebook, Cells 5–9',
+    In:['S2 → S3 Handoff Package','<span class="kv">df</span> already in memory, indicators verified clean'],
+    Does:['<b>R</b> — 70/30 in-sample / out-of-sample split','<b>E</b> — signal on bar N, fill at OPEN of bar N+1','<b>A</b> — IBKR fees ($0.005/share, $1 min) + 0.01% slippage both sides','<b>L</b> — look-ahead verified with shift()','Builds one reusable <span class="kv">run_backtest</span> engine used on IS, OOS and full'],
+    Out:['S3 → S4 Handoff Package','§A full/IS/OOS metrics + Sharpe retention','§C logic and §D caveats forwarded verbatim','§E memory: df_is/df_oos, trade_df, m_full/is/oos'],
+    Rules:['Benchmark comparison is mandatory — Sharpe is the verdict','Exits checked before entries on the same bar','Sharpe &gt; 3 → stop and investigate for look-ahead']},
+
+  s4:{c:'--s4',tag:'S4',name:'Grid Search Optimization',sub:'Optimization specialist · same notebook, Cells 10–15',
+    In:['S3 → S4 Handoff Package','run_backtest and calc_metrics already in memory — never redefined'],
+    Does:['Grid search on <b>in-sample only</b>; df_oos untouched until Cell 14','Heatmap → picks the centre of a plateau, not the highest Sharpe','Cell 13 tests the QG1 caveat variants (always runs, even with none)','Cell 14 is the single OOS reveal; Cell 15 packages the handoff'],
+    Out:['S4 → QG2 Handoff Package, Sections A–G','§B before/after table + IS→OOS degradation','§C plateau evidence: YES/NO, top 3, Modal used?','§E logic with FINAL_PARAMS substituted in'],
+    Rules:['Every range must include the baseline value','Local ≤ ~2,000 combos; beyond that, Modal','&lt;30 trades flagged, &lt;10 explicitly warned as high variance']},
+
+  qg2:{c:'--qg',tag:'QG2',name:'Walk-Forward Stress Test',sub:'Adversarial risk gate · same notebook, Cells 16–19',
+    In:['S4 → QG2 Handoff Package (§A–G)','Pre-flight red-flag scan before any code runs'],
+    Does:['<b>Test 1 — Walk-forward</b>: 3–8 rolling folds, re-optimize on train, score on unseen test','<b>Test 2 — Monte Carlo</b>: 1,000 trade-order shuffles; 5th percentile = realistic worst case','<b>Test 3 — Random baseline</b>: does the strategy beat random entries?','Cell 19 sets risk limits and exports the returns CSV'],
+    Out:['One of three verdicts (see branch)','QG2 → S5 Handoff Package on PASS / CONDITIONAL only','§C risk limits: position cap, kill switch at 1.5× MC worst DD','portfolio_data CSV written regardless of verdict'],
+    Rules:['The job is to BREAK the strategy, not confirm it','Marginal is marginal — never rounded up','&lt;10 trades caps the verdict at CONDITIONAL PASS','A FAIL is never softened — that is the pipeline working']},
+
+  s5:{c:'--s5',tag:'S5',name:'Deployment Wizard',sub:'QXB deployment wizard · outputs a production .py script',
+    In:['QG2 → S5 Handoff Package (auto-detected by header text)','If no handoff: a 4-phase interview instead'],
+    Does:['Parses §D logic, §C risk limits, §A verdict, §F caveats','Picks Template A (sync equity) or Template B (async options)','Generates the script: kill switch, daily-loss halt, Streamlit-compatible logging','Names it <span class="kv">{ClientID}{Asset}{TF}{Logic}.py</span>'],
+    Out:['Production IBKR deployment script','Client ID encodes the mode: 3xxx dry-run / 2xxx paper / 1xxx live','CONDITIONAL PASS → defaults to dry-run + size haircut + ⚠️ comment block'],
+    Rules:['FAIL verdict → refuses to generate a script','Reads the reference template before writing anything','Non-negotiable production standards on every script']},
+
+  src:{c:'--aux',tag:'DATA',name:'Data Sources',sub:'Selected by S1 §B secType, consumed by S2 (and S5 for options)',
+    In:['secType = STK / ETF / FUT / CASH → IBKR TWS via ib_insync, port 7497 (TWS) / 4002 (Gateway)','secType = OPT → Cloudflare R2 <span class="kv">options-data</span> bucket'],
+    Does:['R2: 1-minute chain snapshots, real bid/ask + Greeks, ~2020 → present','15 symbols: SPXW, SPY, GLD, NVDA, MSTR, SOXL, TQQQ, TSLA, TSM, USO, IWM, MSFT, MU, AAPL, META','R2 rows embed <span class="kv">underlying_price</span>, so no separate IBKR pull is usually needed'],
+    Out:['Cached locally: <span class="kv">./data_cache/</span> — parquet for R2, CSV for IBKR'],
+    Rules:['Real bid/ask always beats Black-Scholes simulation','Filter sentinel rows: <span class="kv">time &gt; \'09:30:00\'</span>','<span class="kv">right</span> is a reserved word — backtick it in DuckDB','META history starts 2021-07-08 (FB rename)']},
+
+  modal:{c:'--aux',tag:'AUX',name:'Modal.com Offload',sub:'Optional compute attachment to S4',
+    In:['Grid size decided in S4 Phase 0'],
+    Does:['Distributes grid search across cloud workers'],
+    Out:['Same results_df as a local run — recorded in §C of the S4 handoff'],
+    Rules:['Offered when combos &gt; 200','Required when combos &gt; 2,000','Ceiling ~100,000 combinations','Local ceiling ~2,000; MemoryError is the usual trigger to switch']},
+
+  port:{c:'--aux',tag:'OUT',name:'Portfolio Export',sub:'QG2 Cell 19 side output',
+    In:['Optimized equity curve from the full-period run'],
+    Does:['Writes daily returns with a metadata header'],
+    Out:['<span class="kv">portfolio_data/{STRATEGY_NAME}_returns.csv</span>','Header carries strategy, ticker, timeframe, Sharpe full/OOS, CAGR, max DD, trades, qg2_verdict'],
+    Rules:['Exported on every verdict — including FAIL — so the portfolio layer sees the whole universe']},
+
+  life:{c:'--aux',tag:'OPS',name:'Deployment Lifecycle',sub:'Client ID ranges encode the mode',
+    In:['S5-generated script'],
+    Does:['3001–3999 · dry-run · DRY_RUN=True · port 4002 · DU account','2001–2999 · paper · DRY_RUN=False · port 4002 · DU account','1001–1999 · live · DRY_RUN=False · port 4001 · U account'],
+    Out:['Same script promoted through the three ranges'],
+    Rules:['3xxx validates signals → 2xxx validates fills → 1xxx real money','Minimum 3 months live before scaling up (QG2 §C)']},
+
+  pass:{c:'--s5',tag:'✅',name:'Verdict: PASS',sub:'3/3 tests pass and ≥2 are strong',
+    In:['All three clear the pass bar: WF ≥50% folds profitable · MC 5th-pct Sharpe &gt; −0.5 · beats ≥75% of random entries','…and at least two clear the <b>strong</b> bar: WF ≥75% · MC 5th-pct &gt; 0 · RB ≥95%'],
+    Does:['Produces the QG2 → S5 Handoff Package'],
+    Out:['Max position size 100%','Kill switch at 1.5× the Monte Carlo 5th-percentile drawdown','Review trigger: 3 consecutive losing trades'],
+    Rules:['Still capped at CONDITIONAL if trade count &lt; 30']},
+
+  cond:{c:'--s4',tag:'🟡',name:'Verdict: CONDITIONAL PASS',sub:'≥2 of 3 tests pass, at most 1 fails',
+    In:['e.g. WF marginal (50–74% folds) or MC 5th-pct between −0.5 and 0'],
+    Does:['Produces the handoff, flagged CONDITIONAL'],
+    Out:['Max position size 50%','S5 defaults to dry-run (3xxx) and applies size haircuts','⚠️ CONDITIONAL comment block written into the script'],
+    Rules:['Trade count &lt; 10 → this is the ceiling, with a low-confidence flag']},
+
+  fail:{c:'--qg',tag:'🔴',name:'Verdict: FAIL',sub:'≥2 tests fail, or one catastrophic failure',
+    In:['e.g. &lt;50% folds profitable, MC 5th-pct &lt; −0.5, below 75th percentile vs random'],
+    Does:['<b>No handoff package is produced.</b> S5 refuses to generate a script.'],
+    Out:['Loop back to S4 with different parameter ranges','Loop back to S1 to simplify the hypothesis','Or gather more data — or accept there is no robust edge'],
+    Rules:['A FAIL is never softened. It is framed as the pipeline doing its job.']}
+};
+
+const order = ['s1','s2','s3','s4','qg2','s5'];
+const rail = document.getElementById('rail');
+order.forEach(k=>{
+  const b=document.createElement('button');
+  b.className='pill'; b.dataset.id=k; b.style.setProperty('--c',`var(${D[k].c})`);
+  b.innerHTML=`<span></span>${D[k].tag} · ${D[k].name}`;
+  rail.appendChild(b);
+});
+
+const detail=document.getElementById('detail');
+function render(id){
+  const d=D[id]; if(!d) return;
+  detail.style.setProperty('--c',`var(${d.c})`);
+  const L=(t,a)=>a&&a.length?`<h5>${t}</h5><ul>${a.map(x=>`<li>${x}</li>`).join('')}</ul>`:'';
+  detail.innerHTML=`<span class="dtag">${d.tag}</span><h2>${d.name}</h2><p class="sub">${d.sub}</p>
+    ${L('Receives',d.In)}${L('Does',d.Does)}${L('Emits',d.Out)}${L('Guard rails',d.Rules)}`;
+  document.querySelectorAll('.node,.pill').forEach(n=>n.classList.toggle('on',n.dataset.id===id));
+}
+document.addEventListener('click',e=>{
+  const t=e.target.closest('[data-id]'); if(t) render(t.dataset.id);
+});
+render('s1');
+</script>
+</body>
+</html>
