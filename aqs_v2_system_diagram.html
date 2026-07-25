@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AQS v2 — System Architecture</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1b232d; --line:#2a323d;
+    --tx:#e6edf3; --tx2:#9aa7b4; --tx3:#6d7b8a;
+    --l1:#7c6cf0; --l2:#1fa8a0; --l3:#3b82f6; --l4:#e0952a;
+    --ext:#e0556a; --store:#8b96a3;
+  }
+  @media (prefers-color-scheme: light){
+    :root{--bg:#f5f7fa;--panel:#fff;--panel2:#eef1f5;--line:#d8e0e8;
+          --tx:#16202b;--tx2:#4d5b6a;--tx3:#78848f}
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--tx);
+       font:14.5px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:1500px;margin:0 auto;padding:26px 20px 60px}
+
+  header h1{font-size:23px;margin:0 0 4px;letter-spacing:-.2px}
+  header p{margin:0;color:var(--tx2);font-size:13.5px}
+
+  .bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:18px 0 22px}
+  .tgl{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--panel)}
+  .tgl button{border:0;background:transparent;color:var(--tx2);font:inherit;font-size:12.5px;
+              font-weight:600;padding:7px 14px;cursor:pointer}
+  .tgl button.on{background:var(--l3);color:#fff}
+  .key{display:flex;gap:12px;flex-wrap:wrap;font-size:11.5px;color:var(--tx3);align-items:center}
+  .key i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:0}
+
+  .grid{display:grid;grid-template-columns:1fr 360px;gap:22px;align-items:start}
+  @media (max-width:1080px){.grid{grid-template-columns:1fr}.detail{position:static!important}}
+
+  /* ---- bands ---- */
+  .band{border:1px solid var(--line);border-left:5px solid var(--c);border-radius:12px;
+        background:var(--panel);padding:14px 16px 16px;margin-bottom:16px}
+  .band>h2{margin:0 0 2px;font-size:15px;letter-spacing:-.1px}
+  .band>h2 .n{color:var(--c);font-weight:800;margin-right:8px}
+  .band>.host{margin:0 0 12px;font-size:11.5px;color:var(--tx3);
+              font-family:ui-monospace,Menlo,Consolas,monospace}
+
+  .lane{display:flex;align-items:flex-start;gap:10px;margin:0 0 10px}
+  .lane>.lbl{flex:0 0 88px;font-size:10.5px;letter-spacing:.6px;text-transform:uppercase;
+             color:var(--tx3);padding-top:9px;text-align:right}
+  .lane>.row{flex:1;display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+
+  .n8{border:1px solid var(--line);background:var(--panel2);border-radius:8px;
+      padding:7px 11px;cursor:pointer;transition:.13s;min-width:0;max-width:250px}
+  .n8:hover{border-color:var(--c);transform:translateY(-1px)}
+  .n8.on{box-shadow:0 0 0 2px var(--c) inset;border-color:var(--c)}
+  .n8 .cd{font-size:10.5px;font-weight:800;letter-spacing:.5px;color:var(--c);
+          font-family:ui-monospace,Menlo,Consolas,monospace}
+  .n8 .nm{font-size:12.5px;font-weight:620;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .n8 .sb{font-size:10.5px;color:var(--tx3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .n8 .ph{display:none;font-size:10px;color:var(--tx2);margin-top:5px;padding-top:4px;
+          border-top:1px dashed var(--line);font-family:ui-monospace,Menlo,Consolas,monospace;
+          white-space:normal;line-height:1.4}
+  body.phys .n8 .ph{display:block}
+  .n8.store{background:transparent;border-style:dashed}
+  .n8.store .cd{color:var(--store)}
+  .n8.ext{border-color:var(--ext)}
+  .n8.ext .cd{color:var(--ext)}
+  .ar{color:var(--tx3);font-size:13px;user-select:none}
+  .note{font-size:11px;color:var(--tx3);border:1px dashed var(--line);border-radius:6px;
+        padding:5px 9px;background:transparent}
+
+  .flowdown{display:flex;align-items:center;gap:9px;margin:2px 0 14px 100px;
+            font-size:11.5px;color:var(--tx3)}
+  .flowdown .v{color:var(--tx3);font-size:14px}
+  .flowdown code{background:var(--panel2);border:1px solid var(--line);border-radius:5px;
+                 padding:2px 7px;font-size:10.5px;color:var(--tx2)}
+
+  /* ---- detail ---- */
+  .detail{position:sticky;top:20px;border:1px solid var(--line);border-radius:12px;
+          background:var(--panel);padding:17px 17px 20px;min-height:440px}
+  .detail .dc{font-size:11px;font-weight:800;letter-spacing:.6px;color:var(--c);
+              font-family:ui-monospace,Menlo,Consolas,monospace}
+  .detail h2{font-size:17px;margin:4px 0 2px;letter-spacing:-.2px}
+  .detail .sub{font-size:12px;color:var(--tx3);margin:0 0 12px}
+  .detail h5{margin:15px 0 6px;font-size:10.5px;letter-spacing:.7px;text-transform:uppercase;
+             color:var(--tx3);border-top:1px solid var(--line);padding-top:11px}
+  .detail h5:first-of-type{border-top:0;padding-top:0}
+  .detail ul{margin:0;padding-left:16px}
+  .detail li{font-size:12.5px;color:var(--tx2);margin:3px 0}
+  .detail li b{color:var(--tx);font-weight:620}
+  .detail code,.kv{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;
+                   background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+  footer{margin-top:28px;font-size:11px;color:var(--tx3);border-top:1px solid var(--line);padding-top:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>AQS v2 — System Architecture</h1>
+  <p>Research pipeline → code generation → live runtime → operations. Click any box for what it reads, does and writes.</p>
+</header>
+
+<div class="bar">
+  <div class="tgl">
+    <button id="bLog" class="on">Logical</button>
+    <button id="bPhy">+ Physical</button>
+  </div>
+  <div class="key">
+    <span><i style="background:var(--l3)"></i>process / service</span>
+    <span><i style="background:transparent;border:1px dashed var(--store)"></i>file / datastore</span>
+    <span><i style="background:var(--ext)"></i>external system</span>
+    <span>· “+ Physical” reveals host, systemd unit, port, clientId</span>
+  </div>
+</div>
+
+<div class="grid">
+  <div id="bands"></div>
+  <aside class="detail" id="detail" style="--c:var(--l1)"></aside>
+</div>
+
+<footer>
+  Built from the AQSv2 working tree (scripts, <span class="kv">ibkr_deployment/</span>, <span class="kv">docs/</span>) and the project memory notes, 25 Jul 2026.
+  Counts and states reflect that date: 1,433 compiled alphas, ~1,077 running, canary week 1 in paper, risk-exit patch v2 staged for Mon 27 Jul.
+</footer>
+</div>
+
+<script>
+/* ============================ MODEL ============================ */
+const N = {};   // id -> detail
+function n(id,cls,code,name,sub,phys,d){ N[id]={id,cls,code,name,sub,phys,...d}; return id; }
+
+/* ---------- Layer 1 · Research pipeline ---------- */
+n('tws','ext','IBKR','TWS / IB Gateway','historical bars source','PC-side TWS · ib_insync',
+ {sub2:'External broker API',
+  In:['Symbol universe: <code>sp500_tickers_etf.csv</code>, <code>russell2000_tickers_etf_v0.csv</code>'],
+  Does:['Serves historical OHLCV for every symbol/interval used in research'],
+  Out:['Raw bars consumed by 01 / 01B'],
+  Ops:['Pacing violations are the usual failure — 01B chunks and retries','Corporate actions break extends (see HON spinoff, SATS→ECHO rename)']});
+
+n('s01','proc','01','start_generator','prereq check + launch data_generator','01_start_generator.py → data_generator.py',
+ {In:['Ticker CSVs','IBKR connection'],
+  Does:['Checks Python/deps/TWS, then runs the DataGenerator','Downloads and merges OHLCV + benchmarks (SPY/QQQ/XLI…) + VIX','Computes derived features'],
+  Out:['<code>GridSearch_Data/merged_ibkr_{SYM}_{interval}_*.csv</code>'],
+  Ops:['Data lands in GridSearch_Data.P / .R variants for different universes']});
+
+n('s01b','proc','01B','extend_data','incremental refresh of merged CSVs','01B_extend_data.py --all --full',
+ {In:['Existing <code>GridSearch_Data/*.csv</code>','Fresh IBKR bars'],
+  Does:['Detects schema (benchmarks, VIX) from column names','Fetches only new bars, merges with dedup, recalculates derived features'],
+  Out:['<code>GridSearch_Data_Extended/</code>','<code>generate_extend_report.py</code> summarises failures'],
+  Ops:['Renames/splits break the extend — <code>rename_ticker.py</code> + <code>retired_tickers.json</code> handle aliases','After a split, re-download rather than extend']});
+
+n('gsd','store','DATA','GridSearch_Data/','merged per-symbol OHLCV + features','~1 CSV per symbol × interval (1h / 4h / 1d)',
+ {In:['01 / 01B output'],Does:['Single source of truth for every backtest in the pipeline'],
+  Out:['Read by 02 (grid search) and 03B (walk-forward)'],
+  Ops:['Never edited by hand — regenerate through 01B']});
+
+n('s02','proc','02','AQS_SFGrid_parallel_v2','single-factor grid search, IS/OOS','joblib, all cores · 6–12× speedup · run_02_*.bat by letter group',
+ {In:['<code>GridSearch_Data/</code>'],
+  Does:['Splits each series into In-Sample / Out-of-Sample','Full grid search on IS across feature × model × strategy','Validates on OOS (full grid or top-N from IS)','Computes IS→OOS degradation'],
+  Out:['<code>AQS_SFGridResults/merged_{exch}_{sym}_{int}_*/…/IS_OOS_comparison.csv</code>'],
+  Ops:['Batched alphabetically (run_02_A / _O / _P / _Q …) so a failure only costs one letter group']});
+
+n('s03','proc','03','run_ibkr_gs_pipeline','stage orchestrator (Stages 1–8)','03_run_ibkr_gs_pipeline_v0.1.py --start-stage/--end-stage',
+ {In:['Stage 1 expects <code>AQS_SFGridResults/merged_*</code> folders'],
+  Does:['Runs stages 1–8 in order, per-symbol parallel or cross-symbol consolidated','Registers each stage’s Excel output with input/output row counts'],
+  Out:['Stage logs + the compilation workbooks below'],
+  Ops:['Consolidated stages: 1, 3, 5, 6, 7 · Parallel per-symbol: 2, 4','<code>run_03_*_pipeline.bat</code> wrap it per letter group']});
+
+n('a03A','proc','03A','Alpha Compilation','Stage 1 — top 10 configs per strategy','→ Alpha_GS_Compilation_{exch}_{int}_{date}.xlsx',
+ {In:['Every <code>IS_OOS_comparison.csv</code>'],
+  Does:['Extracts the top 10 configurations from each strategy folder','Writes Alpha Full_Compilation + Alpha_Short (quality-threshold subset)'],
+  Out:['<code>AQS_SFGridResults/Alpha_GS_Compilation_*.xlsx</code>'],
+  Ops:['RPT02 “Total Tested” counts <b>unique combos</b>, not config rows — dedup keeps an arbitrary param row']});
+
+n('a03B','proc','03B','Walk-Forward Validation','Stage 2 — per symbol, parallel','→ walk_forward_report.csv in each strategy folder',
+ {In:['Alpha_Short worksheet','<code>GridSearch_Data/</code>'],
+  Does:['Runs rolling walk-forward validation on each surviving config'],
+  Out:['<code>…/{feature}/{model}/{strategy}/walk_forward_report.csv</code>'],
+  Ops:['The heaviest stage — parallelised per symbol']});
+
+n('a03C','proc','03C','WF Results Compilation','Stage 3 — degradation metrics','→ WF_GS_Compilation_{exch}_{int}_{date}.xlsx',
+ {In:['All <code>walk_forward_report.csv</code>'],
+  Does:['Aggregates WF results, computes IS→WF degradation','Writes the WF_Short survivor sheet'],
+  Out:['<code>AQS_SFGridResults/WF_GS_Compilation_*.xlsx</code>'],Ops:[]});
+
+n('a03D','proc','03D','WF Alpha Generation','Stage 4 — full backtests, per symbol','→ WFAlphaResults/…/backtest.csv, metrics.csv, cumu_pnl_vs_bnh.png',
+ {In:['WF_Short configurations'],
+  Does:['Regenerates a complete backtest for every validated config'],
+  Out:['<code>WFAlphaResults/merged_*/{feature}/{model}/{strategy}/</code> — backtest.csv, metrics.csv, summary.csv, equity curve PNG'],
+  Ops:['These backtest.csv files are what 03F correlates against each other']});
+
+n('a03E','proc','03E','WF Alpha Compilation','Stage 5 — reference workbook','→ WFAlpha_Compilation_{exch}_{int}_{date}.xlsx',
+ {In:['<code>WFAlphaResults/</code> summary.csv + metrics.csv'],
+  Does:['Compiles full-period performance for every validated alpha'],
+  Out:['<code>WFAlphaResults/WFAlpha_Compilation_*.xlsx</code> (WF_Short sheet)'],Ops:[]});
+
+n('a03F','proc','03F','Combination Strategies','Stage 6 — correlation optimisation','→ Combination_Strategy_Compilation_*.xlsx',
+ {In:['WFAlpha_Compilation + per-strategy backtest.csv'],
+  Does:['Builds per-symbol portfolios, optimising on the correlation matrix','Writes Corr Summary, {SYMBOL} Portfolio, {SYMBOL} Corr sheets'],
+  Out:['<code>WFAlphaResults/Combination_Strategy_Compilation_*.xlsx</code>'],
+  Ops:['Correlation threshold is fixed at <b>0.5</b> — selection vs evaluation mismatch is a known watch item']});
+
+n('a03G','proc','03G','Final Compilation','Stage 7 — OUTER merge portfolios','→ Final_Compilation_{exch}_{int}_{date}.xlsx',
+ {In:['Corr Summary at the 0.5 threshold'],
+  Does:['Re-merges strategy backtests with <code>how=\'outer\'</code> to keep every datetime row','Recomputes portfolio metrics over the full range'],
+  Out:['<code>WFAlphaResults/Final_Compilation_*.xlsx</code> — the <b>Final_Alphas</b> sheet'],
+  Ops:['Outer merge + fillna(0) is the key difference from Stage 6’s inner join']});
+
+n('a03H','proc','03H','Risk Parameter Optimisation','Stage 8 — SL / TP / TSL grid','Phase 1: 2,501 SL/TP combos · Phase 2A: 1,281 TSL/TP combos',
+ {In:['Final_Alphas sheet from Stage 7'],
+  Does:['Two-phase grid search for the best stop-loss, take-profit and trailing stop per strategy'],
+  Out:['<code>WFAlphaResults/Risk_Optimized_Compilation_{exch}_{int}_{date}.xlsx</code> — sheet <b>Risk_Optimized_Strategies</b>'],
+  Ops:['This workbook is the hand-off to code generation, and the canonical list for the deploy audit']});
+
+n('rox','store','XLSX','Risk_Optimized_Compilation','the alpha universe of record','WFAlphaResults/ · Strategy_ID lacks the interval — read it off the filename',
+ {In:['Stage 8 output'],
+  Does:['Defines every alpha eligible for deployment, with its optimised Sharpe and risk params'],
+  Out:['Consumed by 04 (codegen) and 04A (pruning)'],
+  Ops:['Canonical audit = this workbook vs <code>deploy_ibkr/</code> stems, after <b>every</b> 04 batch — 04 has no completion manifest','A June run died mid-alphabet; 343 missing 1h alphas were only found this way']});
+
+/* ---------- Layer 2 · Deployment ---------- */
+n('s04','proc','04','generate_deployment_codes_v4','alpha row → runnable bot script','04_generate_deployment_codes_v4.py · client_id_manager allocates IDs',
+ {In:['Risk_Optimized_Compilation workbook'],
+  Does:['Emits one self-contained <code>deploy_ibkr/&lt;SYM&gt;_&lt;int&gt;_&lt;feature&gt;_&lt;model&gt;_&lt;strategy&gt;_kwseow_&lt;ts&gt;.py</code> per alpha','Allocates a unique IBKR clientId per strategy','Rebuilds <code>datafeed_config.json</code> — the hub’s symbol subscription list'],
+  Out:['~1,433 strategy scripts + paired <code>_state.json</code>'],
+  Ops:['New symbols require a <b>hub restart</b> — the hub reads datafeed_config.json only at startup','Re-run the xlsx-vs-deploy audit after every batch']});
+
+n('deploy','store','DIR','deploy_ibkr/','the bot fleet on disk','1,433 compiled · ~1,077 running · Archive/ holds pruned alphas',
+ {In:['04 codegen output'],
+  Does:['Each .py is a thin config wrapper; all behaviour lives in <code>ibkr_deployment/</code> shared modules'],
+  Out:['Launched by 05; discovered by 07/08 via psutil cmdline match'],
+  Ops:['Local mirror is stale (879) — always audit on the server','Strategy scripts contain no Telegram calls; alerts come from the shared modules']});
+
+n('s04A','proc','04A','prioritise_alphas','prune to Top-X by Sharpe','04A_prioritise_alphas.py · interactive, nothing changes until confirmed',
+ {In:['Latest Risk_Optimized_Compilation'],
+  Does:['Tier 1 — best Optimized_Sharpe per symbol','Then fills remaining slots by global Sharpe','Moves everything else to <code>deploy_ibkr/Archive/</code>'],
+  Out:['A pruned, per-symbol-diversified fleet'],
+  Ops:['Never run on prod — that is why prod holds the whole un-pruned universe including the sub-1.0 tail']});
+
+n('tmode','store','JSON','trade_mode_assignments','dry_run / paper / live per strategy','ibkr_deployment/ · resolved ONCE at engine startup',
+ {In:['Manual assignment'],
+  Does:['Maps each strategy stem to a trade mode file (<code>trade_mode_dry_run.json</code>, <code>trade_mode_live_1x.json</code>)'],
+  Out:['Read by <code>trade_mode.py</code> before sub-managers are constructed'],
+  Ops:['Today: 1,423 dry_run / 1 paper (the AAPL canary)','Changing a mode requires stopping and relaunching that strategy','Fail-loud: missing files return a safe fallback <b>and</b> log a WARNING']});
+
+n('s05','proc','05','alpha_launch_pad','launcher for the whole fleet','05_alpha_launch_pad.py · zygote launcher · --block / --single / --datafeed / --dispatcher',
+ {In:['<code>deploy_ibkr/*.py</code>','<code>alpha_blocks.json</code> saved groups'],
+  Does:['Launches strategies singly, by block, or by filter','Zygote pre-fork + BLAS thread cap keeps marginal cost ≈28 MB/bot','Commit-charge / RAM gate pauses launching under memory pressure','Can also start Memurai/Redis, the DataFeedHub and the OrderDispatcher'],
+  Out:['Running engine processes + entries in <code>strategy_registry.json</code>'],
+  Ops:['Thread cap + zygote (7 Jul) cut fleet PSS 40.8 → 22.4 GB','<code>AQS_ZYGOTE=0</code> is the rollback switch','Customisations live in <code>launch_helpers.py</code> to survive upstream launcher updates']});
+
+/* ---------- Layer 3 · Runtime ---------- */
+n('gwl','ext','GW-LIVE','IB Gateway (live)','order flow for live strategies','port 4001 · account U12208060 · java, NOT systemd-managed',
+ {In:['Orders from the dispatcher’s live leg'],
+  Does:['Executes real orders; holds GTC OCA bracket children'],
+  Out:['Fills, positions, account values'],
+  Ops:['Restarts are manual','U12208060 also holds the user’s own ASTS options — never touched by the stack','Wedged HMDS sessions are the recurring failure (6 Jul returned 0 bars, 14 Jul timed out)']});
+
+n('gwp','ext','GW-PAPER','IB Gateway (paper)','hub data + paper order flow','port 4002 · account DU8880734',
+ {In:['Hub historical-data requests; paper orders'],
+  Does:['Serves the market-data hub and executes paper orders'],
+  Out:['Bars, fills'],
+  Ops:['The hub sits here <b>by design</b> — probe order [4002, 7497, 4001, 7496] takes the first that answers, keeping the live session free for order flow','“hub OK on port 4002” is normal, not a failover']});
+
+n('hub','proc','HUB','DataFeedHub','one market-data connection for the fleet','clientId 300 · aq100-datafeedhub.service · ~379 subscriptions',
+ {In:['<code>datafeed_config.json</code> (read at startup only)','Bars from GW-paper'],
+  Does:['HMDS-poll style: publishes on ET hour closes','Runs a SPY canary and refuses to serve when the data farm is broken','Maintains <code>aq100:hub:status</code> with bars_published / ibkr_connected / ibkr_outage_seconds'],
+  Out:['Redis keys <code>aq100:latest|bars|warmup:{sym}:{interval}</code>'],
+  Ops:['Silent ~40 min during warmup with no heartbeat — <b>never restart it in that window</b>, it resets the clock','Heartbeat TTL &lt; poll duration by design — TTL expiry alone is not death','Auto-reconnect added 12 Jun after a daily Gateway restart killed it']});
+
+n('redis','store','REDIS','Redis / Memurai','the bus between every component','aq100:latest|bars|warmup:{sym}:{int} · aq100:hub:status · intent queue',
+ {In:['Hub bar publishes; dispatcher intents and fill events'],
+  Does:['Decouples ~1,077 engines from one IBKR data connection and one order connection'],
+  Out:['<code>redis_bar_provider.wait_for_bar</code> feeds each engine'],
+  Ops:['Starvation symptom: “wait_for_bar timeout” every 6.5 min','<code>redis-cli hgetall aq100:hub:status</code> is the first debug step for “bots not firing”']});
+
+n('eng','proc','ENGINE','StrategyEngine × ~1,077','one process per alpha','deploy_ibkr/&lt;stem&gt;.py → ibkr_deployment/engine.py',
+ {In:['Bars from Redis','Trade mode resolved once at startup'],
+  Does:['Composes sub-managers in order: alert → risk → state → data → orders','Warmup, then evaluate regime on each bar close','Reconciles position against IBKR truth; flip-guard blocks same-bar reversals'],
+  Out:['Order intents → dispatcher','Audit rows + trade CSV + <code>_state.json</code> + per-strategy log'],
+  Ops:['<b>Known gap (fix staged):</b> broker-initiated exits never reached engine state in hub mode — dead <code>_handle_between_bar_risk_exit</code> path, px=0 events dropped silently. Patch v2 adds <code>_handle_dispatcher_risk_exit</code>.','Engines pick up a new engine.py only on restart']});
+
+n('disp','proc','DISP','OrderDispatcher','one order connection per gateway','clientId 400 / 401 · aq100-dispatcher.service · connects BOTH gateways',
+ {In:['Order intents from engines (msgpack over Redis)'],
+  Does:['Places entries and OCA bracket children; confirms fills before booking','Publishes risk_exit events when a stop/TSL/TP child fills','Auto-reconnects a dropped gateway leg without a restart'],
+  Out:['Fill events back to the owning engine; execution audit trail'],
+  Ops:['orderRef = strategy_name, truncated to 20 chars — ownership matching must accept both forms','<code>ib.fills()</code> only covers the current dispatcher session — a child filled before a restart needs manual reconcile','Symbol-agnostic: unlike the hub, it needs no restart when symbols change']});
+
+n('csv','store','CSV','audit / trade CSVs','per-strategy execution record','deploy_ibkr/trades/ + logs/strategies/',
+ {In:['Engine fill callbacks'],
+  Does:['Append-only record of every entry, exit and risk exit'],
+  Out:['Read by the journal, the dashboards and the weekly gate'],
+  Ops:['Was one shared file per symbol — concurrent appends dropped executions; fixed to per-strategy filenames 16 Jun','Commission column is always 0','Local copies are manual snapshots — never infer process health from their mtimes']});
+
+/* ---------- Layer 4 · Ops ---------- */
+n('s08','proc','08','strategy_monitor','read-only terminal dashboard','08_strategy_monitor.py · psutil cmdline discovery',
+ {In:['Live process table','<code>logs/strategies/*.log</code>','strategy_registry.json (optional)'],
+  Does:['Per strategy: status, RSS, uptime, restarts, warning/error counts, latest heartbeat','Surfaces an ALERTS section for anything erroring'],
+  Out:['Terminal view + Telegram'],
+  Ops:['Never starts or stops anything','Sends a false “Strategy recovered” ~5 min after a 07 stop — DOWN→STOPPED reclassify leaves actual_down set']});
+
+n('s09','proc','09','gateway_monitor','Gateway service-level health','aqs-gwmon.service · clientIds 100/102 · re-alert every 30 min',
+ {In:['Real API connection to 4001 and 4002 each cycle','<code>aq100:hub:status</code>'],
+  Does:['Reads what the Gateway GUI shows: API server, market-data farm, HMDS, sec-def farm, IB upstream link','Swap-aware memory ladder','Nags “STILL DOWN (duration)” every 30 min inside Mon–Fri 08:30–16:15 ET'],
+  Out:['Telegram alerts, consequence-framed (“strategies are receiving NO bars”)'],
+  Ops:['A port can accept connections while the Gateway’s internals are broken — that is why this exists','secdefsg farm flaps benignly; only matters for contract re-qualification']});
+
+n('s11','proc','11','preopen_canary','“is today going to work?”','aqs-preopen-canary.timer · 09:00 America/New_York, Mon–Fri',
+ {In:['Live Gateway + hub'],
+  Does:['End-to-end functional test: reqHistoricalData(SPY) must return &gt;0 bars with a fresh last bar','Independent of gwmon and of the hub’s own probes'],
+  Out:['Telegram PASS/FAIL verdict daily (~21:00 SGT)'],
+  Ops:['Timer pinned to New York so EU↔US DST drift can never shift it','First real catch 14 Jul: live-GW HMDS wedge, fixed in ~15 min','<b>Absence</b> of the daily PASS is itself the signal']});
+
+n('s13','proc','13','healthcheck_all.sh','one-shot whole-stack check','13_healthcheck_all.sh · exit code = number of failed sections',
+ {In:['systemd units, ports, fleet count, RAM/swap'],
+  Does:['Read-only sweep of every section of the stack'],
+  Out:['PASS/FAIL per section'],
+  Ops:['Checks, never fixes','Section 7 swap-aware since 9 Jul — the old flat “RAM ≥80%” alert is permanently breached by design since the 56 GB swap deployment','Deeper functional test remains <code>11_preopen_canary.py --no-telegram</code>']});
+
+n('s14','proc','14','backup_config.sh','rebuild-the-box tarball','aqs-configbackup.timer · Sun 03:17 server time → /root/backups',
+ {In:['systemd units, cron, swap/zram, SSH, Redis, netplan, conda env, IB Gateway settings, the full repo'],
+  Does:['Collects everything needed to rebuild vmi3409695 into one dated tarball'],
+  Out:['<code>/root/backups/&lt;date&gt;.tar.gz</code>'],
+  Ops:['Excludes logs, caches and (by default) trade CSVs','Gateway <i>settings</i> are backed up; the installation is re-downloadable']});
+
+n('dash','proc','DASH','strategy_dashboard','web dashboard + infra strip','aqs-dashboard.service · :8700',
+ {In:['Registry, logs, trade CSVs, system metrics'],
+  Does:['Fleet view with mode filter and an infrastructure strip (ports, dispatcher pill, swap metrics)'],
+  Out:['Browser UI + <code>[AQS dashboard]</code> Telegram alerts'],
+  Ops:['Double-alerts with 08 — both watch the same conditions']});
+
+n('s06','proc','06','monitor (streamlit)','live P&L / execution monitor','aq100-monitor.service · streamlit',
+ {In:['Live IBKR executions','Trade CSVs'],
+  Does:['Streams executions with execId dedup, rotating log, auto-reconnect, CAGR display'],
+  Out:['Streamlit UI'],
+  Ops:['<code>streamlit-autorefresh</code> is required — a JS reload destroys session state and kills the IBKR connection']});
+
+n('s07','proc','07','stop_all_strategies','the stop button','07_stop_all_strategies.py --close-positions | --keep-positions',
+ {In:['Live process table (psutil, not the registry)'],
+  Does:['<b>--close-positions</b>: CTRL_C → engine SIGINT handler flattens and saves state, then taskkill after timeout','<b>--keep-positions</b>: plain stop, leaves the position and its broker-side stops alone'],
+  Out:['Stopped strategies'],
+  Ops:['Use --keep-positions for mode flips and canary repair when the broker is already flat','Old-engine processes lack a SIGBREAK handler — CTRL_BREAK is an abrupt kill for those']});
+
+n('s10','proc','10','registry_cleanup','prune ghost registry entries','10_registry_cleanup.py · dry-run by default, --apply to write',
+ {In:['<code>strategy_registry.json</code>'],
+  Does:['Verifies each PID against the live process table at prune time: alive / mismatch / dead'],
+  Out:['A pruned registry (backed up first, written atomically)'],
+  Ops:['Optional hygiene, not a requirement','The registry is a launch log, not the alpha universe — and its <code>status</code> field goes stale']});
+
+n('recon','proc','RECON','reconcile_broker / retire_strategy','orphan hunting at the broker','reconcile_broker.py (fleet sweep) · retire_strategy.py --check/--flatten',
+ {In:['IBKR open orders and positions','Running strategy ownership'],
+  Does:['Finds orders and positions no longer owned by any running strategy','Protective GTC OCA brackets survive a crash — the risk is orphans, not naked positions'],
+  Out:['Report, or a flatten for a specific strategy'],
+  Ops:['Ownership-only reconcile gave false comfort on 17 Jul — a <b>quantity</b> mode is the pending fix','Related tools: <code>paper_account_cleanup.py</code> (4002 guard), <code>flatten_block29.py</code>']});
+
+n('jour','proc','JOURNAL','trading journal','daily workbook + Telegram summary','aqs-journal.timer · 06:00 SGT · journal/ package',
+ {In:['Trade CSVs, audit rows, compilation workbooks'],
+  Does:['Builds sheets, computes metrics, delivers a summary'],
+  Out:['<code>AQS_Trading_Journal.xlsx</code> + Telegram'],
+  Ops:['Journal “TOTAL ALPHAS” is its own Final_Alphas snapshot — it will not match the deploy count','Watch for unparseable-datetime warnings after the pandas-3 io.py fix']});
+
+n('rpt','proc','RPT','RPT01 / RPT02 / RPT03','self-contained HTML reports','→ aqs_alpha_dashboard.html · aqs_pipeline_v2.html · aqs_alpha_intelligence.html',
+ {In:['Only pipeline-generated compilation files — no journal, no external references'],
+  Does:['<b>RPT01</b> alpha dashboard: every Alpha_GS_Compilation concatenated across intervals and dates','<b>RPT02</b> pipeline dashboard: stage-by-stage survival 03A → 03H, per letter group','<b>RPT03</b> alpha intelligence: features, models and strategies with survival and Sharpe at each stage'],
+  Out:['Three standalone HTML files'],
+  Ops:['Dated files are concatenated without dedup — each covers a different symbol batch']});
+
+n('tg','ext','TG','Telegram','the alert channel','sysmon bot + [AQS dashboard] · priority lanes in alert_routing.py',
+ {In:['Engine alerts, gwmon, canary, dashboard, journal'],
+  Does:['Priority queue: 0 CRITICAL (kill switch, MDD halt) · 1 RISK · 2 TRADE · 3 INFO'],
+  Out:['Messages to the operator'],
+  Ops:['Single edge-triggered messages get scrolled past — that is why gwmon now nags every 30 min','Master gate is the <code>telegram_enabled</code> config flag']});
+
+n('sync','proc','SYNC','sync_vps_data.py','pull logs + trades to the PC','runs on Windows, stock OpenSSH · one sftp batch, one password prompt',
+ {In:['Remote <code>deploy_ibkr/logs</code> and <code>deploy_ibkr/trades</code>'],
+  Does:['Builds a size manifest, downloads only files that are missing or differ in size, verifies afterwards'],
+  Out:['Local copies for analysis'],
+  Ops:['Size-only comparison — a rewrite to exactly the same byte count would be skipped','Nothing local is ever deleted']});
+
+/* ---------- layout ---------- */
+const BANDS = [
+ {c:'--l1', n:'1', title:'Research pipeline — find the alphas',
+  host:'Windows PC · C:\\Users\\kwseo\\Claude\\Projects\\AQSv2 · batched by ticker letter group',
+  lanes:[
+   {lbl:'Data',   row:['tws','>','s01','>','gsd','>','s01b']},
+   {lbl:'Search', row:['gsd','>','s02','#AQS_SFGridResults/ — IS/OOS grid per feature × model × strategy']},
+   {lbl:'Stages', row:['s03','>','a03A','>','a03B','>','a03C','>','a03D','>','a03E','>','a03F','>','a03G','>','a03H','>','rox']}
+  ],
+  flow:'Risk_Optimized_Compilation_*.xlsx  →  code generation'},
+
+ {c:'--l2', n:'2', title:'Deployment — turn alphas into bots',
+  host:'PC generates · rsync/scp to VPS · prod tree /root/AQ100/AQS100_v2',
+  lanes:[
+   {lbl:'Codegen', row:['rox','>','s04','>','deploy','>','s04A','#Archive/ for everything below the Top-X cut']},
+   {lbl:'Launch',  row:['tmode','>','s05','#also starts Redis, the hub and the dispatcher','>','deploy']}
+  ],
+  flow:'05 launches ~1,077 engine processes  →  live runtime'},
+
+ {c:'--l3', n:'3', title:'Runtime — the live stack',
+  host:'VPS vmi3409695 (Contabo) · server local time UTC+2 · conda env “ibkr” · 56 GB swap',
+  lanes:[
+   {lbl:'Market data', row:['gwp','>','hub','>','redis','>','eng']},
+   {lbl:'Execution',   row:['eng','>','disp','>','gwl','#live leg','+','gwp','#paper leg','>','disp','>','eng','#fill / risk_exit events']},
+   {lbl:'Persistence', row:['eng','>','csv','+','deploy','#_state.json per strategy']}
+  ],
+  flow:'logs, trades and status  →  operations'},
+
+ {c:'--l4', n:'4', title:'Operations — watch, control, report',
+  host:'systemd units on the VPS · Telegram to the phone · reports rendered locally',
+  lanes:[
+   {lbl:'Watchdogs', row:['s09','+','s11','+','s13','+','s08','+','dash','+','s06','>','tg']},
+   {lbl:'Control',   row:['s05','+','s07','+','s10','+','recon','#quantity-mode reconcile pending']},
+   {lbl:'Reporting', row:['jour','>','tg','+','rpt','#three HTML dashboards','+','sync','#VPS → PC','+','s14','#weekly rebuild tarball']}
+  ],
+  flow:null}
+];
+
+/* ============================ RENDER ============================ */
+const root=document.getElementById('bands');
+BANDS.forEach(b=>{
+  const el=document.createElement('section');
+  el.className='band'; el.style.setProperty('--c',`var(${b.c})`);
+  let h=`<h2><span class="n">${b.n}</span>${b.title}</h2><p class="host">${b.host}</p>`;
+  b.lanes.forEach(l=>{
+    h+=`<div class="lane"><div class="lbl">${l.lbl}</div><div class="row">`;
+    l.row.forEach(item=>{
+      if(item==='>'){ h+=`<span class="ar">→</span>`; return; }
+      if(item==='+'){ h+=`<span class="ar">·</span>`; return; }
+      if(item[0]==='#'){ h+=`<span class="note">${item.slice(1)}</span>`; return; }
+      const d=N[item];
+      h+=`<div class="n8 ${d.cls}" data-id="${d.id}" style="--c:var(${b.c})">
+            <div class="cd">${d.code}</div><div class="nm">${d.name}</div>
+            <div class="sb">${d.sub}</div><div class="ph">${d.phys}</div></div>`;
+    });
+    h+=`</div></div>`;
+  });
+  if(b.flow) h+=`<div class="flowdown"><span class="v">▼</span><code>${b.flow}</code></div>`;
+  el.innerHTML=h; root.appendChild(el);
+});
+
+const detail=document.getElementById('detail');
+function show(id){
+  const d=N[id]; if(!d) return;
+  const band=BANDS.find(b=>b.lanes.some(l=>l.row.includes(id)));
+  detail.style.setProperty('--c',`var(${band?band.c:'--l3'})`);
+  const L=(t,a)=>a&&a.length?`<h5>${t}</h5><ul>${a.map(x=>`<li>${x}</li>`).join('')}</ul>`:'';
+  detail.innerHTML=`<div class="dc">${d.code}</div><h2>${d.name}</h2>
+    <p class="sub">${d.sub} · <span class="kv">${d.phys}</span></p>
+    ${L('Reads',d.In)}${L('Does',d.Does)}${L('Writes',d.Out)}${L('Operational notes',d.Ops)}`;
+  document.querySelectorAll('.n8').forEach(e=>e.classList.toggle('on',e.dataset.id===id));
+}
+document.addEventListener('click',e=>{const t=e.target.closest('.n8'); if(t) show(t.dataset.id);});
+
+const bLog=document.getElementById('bLog'), bPhy=document.getElementById('bPhy');
+bLog.onclick=()=>{document.body.classList.remove('phys');bLog.classList.add('on');bPhy.classList.remove('on')};
+bPhy.onclick=()=>{document.body.classList.add('phys');bPhy.classList.add('on');bLog.classList.remove('on')};
+
+show('s02');
+</script>
+</body>
+</html>
